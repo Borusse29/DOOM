@@ -55,6 +55,7 @@ static const char rcsid[] = "$Id: soundsrv.c,v 1.3 1997/01/29 22:40:44 b1 Exp $"
 #include "soundsrv.h"
 #include "wadread.h"
 
+#include <string.h>
 
 
 //
@@ -331,7 +332,7 @@ grabdata
     doom2fwad = malloc(strlen(doomwaddir)+1+10+1);
     sprintf(doom2fwad, "%s/doom2f.wad", doomwaddir);
     
-    doomuwad = malloc(strlen(doomwaddir)+1+8+1);
+    doomuwad = malloc(strlen(doomwaddir)+1+9+1);
     sprintf(doomuwad, "%s/doomu.wad", doomwaddir);
     
     doomwad = malloc(strlen(doomwaddir)+1+8+1);
@@ -696,7 +697,7 @@ main
 			    waitingtofinish = 1; rc = 0;
 			    break;
 			    
-			  case 's':
+			  /*case 's': // I do not trust this
 			  {
 			      int fd;
 			      read(0, commandbuf, 3);
@@ -708,7 +709,7 @@ main
 			      write(fd, S_sfx[sndnum].data, lengths[sndnum]);
 			      close(fd);
 			  }
-			  break;
+			  break;*/
 			  
 			  default:
 			    fprintf(stderr, "Did not recognize command\n");

@@ -34,67 +34,83 @@
 
 static const char rcsid[] = "$Id: linux.c,v 1.3 1997/01/26 07:45:01 b1 Exp $";
 
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#include <linux/soundcard.h>
+#include <alsa/asoundlib.h>
 
 #include "soundsrv.h"
 
-int	audio_fd;
-
-void
-myioctl
-( int	fd,
-  int	command,
-  int*	arg )
-{   
-    int		rc;
-    extern int	errno;
-    
-    rc = ioctl(fd, command, arg);  
-    if (rc < 0)
-    {
-	fprintf(stderr, "ioctl(dsp,%d,arg) failed\n", command);
-	fprintf(stderr, "errno=%d\n", errno);
-	exit(-1);
-    }
-}
+snd_pcm_t *playback_handle;
+snd_pcm_hw_params_t *hw_params;
 
 void I_InitMusic(void)
 {
 }
 
+// thanks to https://equalarea.com/paul/alsa-audio.html#playex
 void
 I_InitSound
 ( int	samplerate,
   int	samplesize )
 {
+	unsigned int rate = 11025;
+    int err;
+    const char *device_name = "default";
 
-    int i;
-                
-    audio_fd = open("/dev/dsp", O_WRONLY);
-    if (audio_fd<0)
-        fprintf(stderr, "Could not open /dev/dsp\n");
-         
-                     
-    i = 11 | (2<<16);                                           
-    myioctl(audio_fd, SNDCTL_DSP_SETFRAGMENT, &i);
-                    
-    myioctl(audio_fd, SNDCTL_DSP_RESET, 0);
-    i=11025;
-    myioctl(audio_fd, SNDCTL_DSP_SPEED, &i);
-    i=1;    
-    myioctl(audio_fd, SNDCTL_DSP_STEREO, &i);
-            
-    myioctl(audio_fd, SNDCTL_DSP_GETFMTS, &i);
-    if (i&=AFMT_S16_LE)    
-        myioctl(audio_fd, SNDCTL_DSP_SETFMT, &i);
-    else
-        fprintf(stderr, "Could not play signed 16 data\n");
+    if ((err = snd_pcm_open (&playback_handle, device_name, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        fprintf (stderr, "cannot open audio device %s (%s)\n",
+             device_name,
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
+        fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_any (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+        fprintf (stderr, "cannot set access type (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE)) < 0) {
+        fprintf (stderr, "cannot set sample format (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &rate, 0)) < 0) {
+        fprintf (stderr, "cannot set sample rate (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_channels (playback_handle, hw_params, 2)) < 0) {
+        fprintf (stderr, "cannot set channel count (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot set parameters (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
+
+    snd_pcm_hw_params_free (hw_params);
+
+    if ((err = snd_pcm_prepare (playback_handle)) < 0) {
+        fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
 
 }
 
@@ -103,14 +119,17 @@ I_SubmitOutputBuffer
 ( void*	samples,
   int	samplecount )
 {
-    write(audio_fd, samples, samplecount*4);
+    int err;
+    if ((err = snd_pcm_writei (playback_handle, samples, samplecount)) != samplecount) {
+        fprintf (stderr, "write to audio interface failed (%s)\n",
+             snd_strerror (err));
+        exit (1);
+    }
 }
 
 void I_ShutdownSound(void)
 {
-
-    close(audio_fd);
-
+    snd_pcm_close (playback_handle);
 }
 
 void I_ShutdownMusic(void)

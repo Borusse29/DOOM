@@ -101,7 +101,7 @@ typedef enum
 //  scaling e.g. to 2. Drawing of status bar,
 //  menues etc. is tied to the scale implied
 //  by the graphics.
-#define	SCREEN_MUL		1
+#define	SCREEN_MUL		3
 #define	INV_ASPECT_RATIO	0.625 // 0.75, ideally
 
 // Defines suck. C sucks.
@@ -112,8 +112,7 @@ typedef enum
 #define SCREENHEIGHT 200
 //(int)(SCREEN_MUL*BASE_WIDTH*INV_ASPECT_RATIO) //200
 
-
-
+#define BYTES_PER_PIXEL 4
 
 // The maximum number of players, multiplayer/networking.
 #define MAXPLAYERS		4

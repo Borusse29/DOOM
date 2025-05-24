@@ -7,9 +7,9 @@
 #
 
 CC=gcc
-CFLAGS=-O -DNORMALUNIX -DLINUX
+CFLAGS=-O -g -Wall -DNORMALUNIX -DLINUX
 LDFLAGS=
-LIBS=-lm
+LIBS=-lm -lasound
 
 O=linux
 

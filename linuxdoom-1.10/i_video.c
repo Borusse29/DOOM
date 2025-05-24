@@ -46,7 +46,7 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 #include <sys/socket.h>
 
 #include <netinet/in.h>
-#include <errnos.h>
+#include <errno.h>
 #include <signal.h>
 
 #include "doomstat.h"
@@ -61,7 +61,6 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 
 Display*	X_display=0;
 Window		X_mainWindow;
-Colormap	X_cmap;
 Visual*		X_visual;
 GC		X_gc;
 XEvent		X_event;
@@ -87,7 +86,10 @@ int		doPointerWarp = POINTER_WARP_COUNTDOWN;
 // replace each 320x200 pixel with multiply*multiply pixels.
 // According to Dave Taylor, it still is a bonehead thing
 // to use ....
-static int	multiply=1;
+static int	multiply=SCREEN_MUL;
+
+static XColor	colors[256];
+static unsigned char* expanded_screen;
 
 
 //
@@ -170,6 +172,8 @@ void I_ShutdownGraphics(void)
   // Release shared memory.
   shmdt(X_shminfo.shmaddr);
   shmctl(X_shminfo.shmid, IPC_RMID, 0);
+
+  free(expanded_screen);
 
   // Paranoia.
   image->data = NULL;
@@ -385,7 +389,7 @@ void I_FinishUpdate (void)
 
 	ilineptr = (unsigned int *) (screens[0]);
 	for (i=0 ; i<2 ; i++)
-	    olineptrs[i] = (unsigned int *) &image->data[i*X_width];
+	    olineptrs[i] = (unsigned int *) &expanded_screen[i*X_width];
 
 	y = SCREENHEIGHT;
 	while (y--)
@@ -427,7 +431,7 @@ void I_FinishUpdate (void)
 
 	ilineptr = (unsigned int *) (screens[0]);
 	for (i=0 ; i<3 ; i++)
-	    olineptrs[i] = (unsigned int *) &image->data[i*X_width];
+	    olineptrs[i] = (unsigned int *) &expanded_screen[i*X_width];
 
 	y = SCREENHEIGHT;
 	while (y--)
@@ -477,8 +481,20 @@ void I_FinishUpdate (void)
     {
 	// Broken. Gotta fix this some day.
 	void Expand4(unsigned *, double *);
-  	Expand4 ((unsigned *)(screens[0]), (double *) (image->data));
+  	Expand4 ((unsigned *)(screens[0]), (double *) expanded_screen);
     }
+
+	// transform depth
+	// ths could be done while expanding the image
+	for (int x = 0; x < X_width; ++x)
+	for (int y = 0; y < X_height; ++y) {
+		int idx = x + y * X_width;
+		unsigned char pixel_byte = expanded_screen[idx];
+		((int32_t*) image->data)[idx] = 
+			(colors[pixel_byte].blue & 0xff)
+			| (colors[pixel_byte].green & 0xff00)
+			| ((colors[pixel_byte].red & 0xff) << 16);
+	}
 
     if (doShm)
     {
@@ -533,47 +549,35 @@ void I_ReadScreen (byte* scr)
 //
 // Palette stuff.
 //
-static XColor	colors[256];
 
-void UploadNewPalette(Colormap cmap, byte *palette)
+void UploadNewPalette(byte *palette)
 {
 
     register int	i;
     register int	c;
     static boolean	firstcall = true;
 
-#ifdef __cplusplus
-    if (X_visualinfo.c_class == PseudoColor && X_visualinfo.depth == 8)
-#else
-    if (X_visualinfo.class == PseudoColor && X_visualinfo.depth == 8)
-#endif
+    // initialize the colormap
+    if (firstcall)
+    {
+	firstcall = false;
+	for (i=0 ; i<256 ; i++)
 	{
-	    // initialize the colormap
-	    if (firstcall)
-	    {
-		firstcall = false;
-		for (i=0 ; i<256 ; i++)
-		{
-		    colors[i].pixel = i;
-		    colors[i].flags = DoRed|DoGreen|DoBlue;
-		}
-	    }
-
-	    // set the X colormap entries
-	    for (i=0 ; i<256 ; i++)
-	    {
-		c = gammatable[usegamma][*palette++];
-		colors[i].red = (c<<8) + c;
-		c = gammatable[usegamma][*palette++];
-		colors[i].green = (c<<8) + c;
-		c = gammatable[usegamma][*palette++];
-		colors[i].blue = (c<<8) + c;
-	    }
-
-	    // store the colors to the current colormap
-	    XStoreColors(X_display, cmap, colors, 256);
-
+	    colors[i].pixel = i;
+	    colors[i].flags = DoRed|DoGreen|DoBlue;
 	}
+    }
+
+    // set the X colormap entries
+    for (i=0 ; i<256 ; i++)
+    {
+	c = gammatable[usegamma][*palette++];
+	colors[i].red = (c<<8) + c;
+	c = gammatable[usegamma][*palette++];
+	colors[i].green = (c<<8) + c;
+	c = gammatable[usegamma][*palette++];
+	colors[i].blue = (c<<8) + c;
+    }
 }
 
 //
@@ -581,7 +585,7 @@ void UploadNewPalette(Colormap cmap, byte *palette)
 //
 void I_SetPalette (byte* palette)
 {
-    UploadNewPalette(X_cmap, palette);
+    UploadNewPalette(palette);
 }
 
 
@@ -768,8 +772,8 @@ void I_InitGraphics(void)
 
     // use the default visual 
     X_screen = DefaultScreen(X_display);
-    if (!XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
-	I_Error("xdoom currently only supports 256-color PseudoColor screens");
+    if (!XMatchVisualInfo(X_display, X_screen, 24, 4, &X_visualinfo))
+	I_Error("this port of doom only supports 24-bit DirectColor screens");
     X_visual = X_visualinfo.visual;
 
     // check for the MITSHM extension
@@ -790,19 +794,14 @@ void I_InitGraphics(void)
 
     fprintf(stderr, "Using MITSHM extension\n");
 
-    // create the colormap
-    X_cmap = XCreateColormap(X_display, RootWindow(X_display,
-						   X_screen), X_visual, AllocAll);
-
     // setup attributes for main window
-    attribmask = CWEventMask | CWColormap | CWBorderPixel;
+    attribmask = CWEventMask | CWBorderPixel;
     attribs.event_mask =
 	KeyPressMask
 	| KeyReleaseMask
 	// | PointerMotionMask | ButtonPressMask | ButtonReleaseMask
 	| ExposureMask;
 
-    attribs.colormap = X_cmap;
     attribs.border_pixel = 0;
 
     // create the main window
@@ -811,7 +810,7 @@ void I_InitGraphics(void)
 					x, y,
 					X_width, X_height,
 					0, // borderwidth
-					8, // depth
+					24, // depth
 					InputOutput,
 					X_visual,
 					attribmask,
@@ -858,7 +857,7 @@ void I_InitGraphics(void)
 	// create the image
 	image = XShmCreateImage(	X_display,
 					X_visual,
-					8,
+					24,
 					ZPixmap,
 					0,
 					&X_shminfo,
@@ -897,20 +896,19 @@ void I_InitGraphics(void)
     {
 	image = XCreateImage(	X_display,
     				X_visual,
-    				8,
+    				24,
     				ZPixmap,
     				0,
-    				(char*)malloc(X_width * X_height),
+    				(char*)malloc(BYTES_PER_PIXEL * X_width * X_height),
     				X_width, X_height,
     				8,
-    				X_width );
+    				BYTES_PER_PIXEL * X_width );
 
     }
 
-    if (multiply == 1)
-	screens[0] = (unsigned char *) (image->data);
-    else
-	screens[0] = (unsigned char *) malloc (SCREENWIDTH * SCREENHEIGHT);
+	// TODO I am not sure this line is needed.
+	//screens[0] = (unsigned char *) malloc (SCREENWIDTH * SCREENHEIGHT);
+	expanded_screen = (unsigned char *) malloc (X_width * X_height);
 
 }
 
@@ -986,13 +984,13 @@ Expand4
 	{
 	    fourpixels = lineptr[0];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[0] = dpixel;
 	    xline[160] = dpixel;
 	    xline[320] = dpixel;
 	    xline[480] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[1] = dpixel;
 	    xline[161] = dpixel;
 	    xline[321] = dpixel;
@@ -1000,13 +998,13 @@ Expand4
 
 	    fourpixels = lineptr[1];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[2] = dpixel;
 	    xline[162] = dpixel;
 	    xline[322] = dpixel;
 	    xline[482] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[3] = dpixel;
 	    xline[163] = dpixel;
 	    xline[323] = dpixel;
@@ -1014,13 +1012,13 @@ Expand4
 
 	    fourpixels = lineptr[2];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[4] = dpixel;
 	    xline[164] = dpixel;
 	    xline[324] = dpixel;
 	    xline[484] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[5] = dpixel;
 	    xline[165] = dpixel;
 	    xline[325] = dpixel;
@@ -1028,13 +1026,13 @@ Expand4
 
 	    fourpixels = lineptr[3];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[6] = dpixel;
 	    xline[166] = dpixel;
 	    xline[326] = dpixel;
 	    xline[486] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[7] = dpixel;
 	    xline[167] = dpixel;
 	    xline[327] = dpixel;

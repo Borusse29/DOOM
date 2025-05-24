@@ -874,12 +874,12 @@ void D_DoomMain (void)
     if (devparm)
 	printf(D_DEVSTR);
     
-    if (M_CheckParm("-cdrom"))
+    /*if (M_CheckParm("-cdrom"))
     {
 	printf(D_CDROM);
 	mkdir("c:\\doomdata",0);
 	strcpy (basedefault,"c:/doomdata/default.cfg");
-    }	
+    }*/
     
     // turbo option
     if ( (p=M_CheckParm ("-turbo")) )
