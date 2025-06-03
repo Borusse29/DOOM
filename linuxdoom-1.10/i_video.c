@@ -86,7 +86,7 @@ int		doPointerWarp = POINTER_WARP_COUNTDOWN;
 // replace each 320x200 pixel with multiply*multiply pixels.
 // According to Dave Taylor, it still is a bonehead thing
 // to use ....
-static int	multiply=SCREEN_MUL;
+static int	multiply = 1;
 
 static XColor	colors[256];
 static unsigned char* expanded_screen;
@@ -484,17 +484,17 @@ void I_FinishUpdate (void)
   	Expand4 ((unsigned *)(screens[0]), (double *) expanded_screen);
     }
 
-	// transform depth
-	// ths could be done while expanding the image
-	for (int x = 0; x < X_width; ++x)
-	for (int y = 0; y < X_height; ++y) {
-		int idx = x + y * X_width;
-		unsigned char pixel_byte = expanded_screen[idx];
-		((int32_t*) image->data)[idx] = 
-			(colors[pixel_byte].blue & 0xff)
-			| (colors[pixel_byte].green & 0xff00)
-			| ((colors[pixel_byte].red & 0xff) << 16);
-	}
+    // transform depth
+    // ths could be done while expanding the image
+    for (int x = 0; x < X_width; ++x)
+    for (int y = 0; y < X_height; ++y) {
+	int idx = x + y * X_width;
+	unsigned char pixel_byte = expanded_screen[idx];
+	((int32_t*) image->data)[idx] = 
+	    (colors[pixel_byte].blue & 0xff)
+	    | (colors[pixel_byte].green & 0xff00)
+	    | ((colors[pixel_byte].red & 0xff) << 16);
+    }
 
     if (doShm)
     {
@@ -906,10 +906,10 @@ void I_InitGraphics(void)
 
     }
 
-	// TODO I am not sure this line is needed.
-	//screens[0] = (unsigned char *) malloc (SCREENWIDTH * SCREENHEIGHT);
-	expanded_screen = (unsigned char *) malloc (X_width * X_height);
+    expanded_screen = (unsigned char *) malloc (X_width * X_height);
 
+    if (multiply == 1)
+	screens[0] = expanded_screen;
 }
 
 

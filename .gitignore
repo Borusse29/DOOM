@@ -1,2 +1,5 @@
 sndserv/linux/
 linuxdoom-1.10/linux/
+tags
+*.lock
+*.temp
