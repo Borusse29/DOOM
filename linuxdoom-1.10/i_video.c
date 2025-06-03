@@ -26,6 +26,7 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <byteswap.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
@@ -479,8 +480,6 @@ void I_FinishUpdate (void)
     }
     else if (multiply == 4)
     {
-	// Broken. Gotta fix this some day.
-	void Expand4(unsigned *, double *);
   	Expand4 ((unsigned *)(screens[0]), (double *) expanded_screen);
     }
 
@@ -982,7 +981,7 @@ Expand4
 
 	do
 	{
-	    fourpixels = lineptr[0];
+	    fourpixels = bswap_32(lineptr[0]);
 			
 	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[0] = dpixel;
@@ -996,7 +995,7 @@ Expand4
 	    xline[321] = dpixel;
 	    xline[481] = dpixel;
 
-	    fourpixels = lineptr[1];
+	    fourpixels = bswap_32(lineptr[1]);
 			
 	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[2] = dpixel;
@@ -1010,7 +1009,7 @@ Expand4
 	    xline[323] = dpixel;
 	    xline[483] = dpixel;
 
-	    fourpixels = lineptr[2];
+	    fourpixels = bswap_32(lineptr[2]);
 			
 	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[4] = dpixel;
@@ -1024,7 +1023,7 @@ Expand4
 	    xline[325] = dpixel;
 	    xline[485] = dpixel;
 
-	    fourpixels = lineptr[3];
+	    fourpixels = bswap_32(lineptr[3]);
 			
 	    dpixel = *(double *)( (long)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[6] = dpixel;
