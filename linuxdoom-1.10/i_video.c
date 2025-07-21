@@ -815,6 +815,10 @@ void I_InitGraphics(void)
 					attribmask,
 					&attribs );
 
+    // set window name
+    char* windowName = "DOOM";
+    XStoreName(X_display, X_mainWindow, windowName);
+
     XDefineCursor(X_display, X_mainWindow,
 		  createnullcursor( X_display, X_mainWindow ) );
 
